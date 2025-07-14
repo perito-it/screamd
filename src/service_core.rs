@@ -1,5 +1,5 @@
 use crate::os_control::OsControl;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::{Duration as ChronoDuration, Utc};
 use serde::Deserialize;
 use std::fs;
@@ -17,7 +17,6 @@ struct State {
     start_time: chrono::DateTime<Utc>,
 }
 
-
 pub async fn run_service<C: OsControl>(
     os: C,
     config: Config,
@@ -27,17 +26,17 @@ pub async fn run_service<C: OsControl>(
     let warn_deadline = state.start_time + ChronoDuration::days(config.warn_duration_days);
     let reboot_deadline = warn_deadline + ChronoDuration::days(config.reboot_duration_days);
 
-    // pack OS-Abstraktion in Arc
+    // Wrap the OS abstraction in an Arc
     let os = Arc::new(os);
 
-    // Banner setzen
+    // Set banner
     if now < warn_deadline {
         os.set_login_banner(Some(&config.warn_message))?;
     } else {
         os.set_login_banner(None)?;
     }
 
-    // Warn-Loop
+    // Warning loop
     if now < warn_deadline {
         let os_clone = os.clone();
         let msg = config.warn_message.clone();
@@ -50,14 +49,14 @@ pub async fn run_service<C: OsControl>(
         });
     }
 
-    // Reboot- bzw. Shutdown-Loop
+    // Reboot or shutdown loop
     if now < warn_deadline {
         std::future::pending::<()>().await;
     } else if now < reboot_deadline {
         let os_clone = os.clone();
         loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(24 * 3600)).await;
             os_clone.reboot().await?;
+            tokio::time::sleep(tokio::time::Duration::from_secs(24 * 3600)).await;
         }
     } else {
         os.shutdown().await?;
@@ -67,14 +66,29 @@ pub async fn run_service<C: OsControl>(
 }
 
 fn load_or_init_state() -> Result<State> {
-    let path = "state.json";
-    if let Ok(s) = fs::read_to_string(path) {
-        let t: String = serde_json::from_str(&s)?;
-        let dt = chrono::DateTime::parse_from_rfc3339(&t)?.with_timezone(&Utc);
+    // Try to get path from env var, otherwise build it from exe path
+    let path = match std::env::var("STATE_PATH") {
+        Ok(p) => std::path::PathBuf::from(p),
+        Err(_) => {
+            let exe_path = std::env::current_exe().context("Failed to get current executable path")?;
+            let exe_dir = exe_path
+                .parent()
+                .context("Failed to get parent directory of executable")?;
+            exe_dir.join("state.json")
+        }
+    };
+
+    if let Ok(s) = fs::read_to_string(&path) {
+        let t: String = serde_json::from_str(&s)
+            .with_context(|| format!("Failed to deserialize state from {}", path.display()))?;
+        let dt = chrono::DateTime::parse_from_rfc3339(&t)
+            .with_context(|| format!("Failed to parse timestamp from {}", path.display()))?
+            .with_timezone(&Utc);
         Ok(State { start_time: dt })
     } else {
         let now = Utc::now();
-        fs::write(path, serde_json::to_string(&now.to_rfc3339())?)?;
+        fs::write(&path, serde_json::to_string(&now.to_rfc3339())?)
+            .with_context(|| format!("Failed to write initial state to {}", path.display()))?;
         Ok(State { start_time: now })
     }
 }
@@ -86,7 +100,7 @@ mod tests {
     use chrono::{Utc, Duration as ChronoDuration};
     use tokio::time::Duration as TokioDuration;
 
-    // Ein einfacher Call-Recorder für OsControl
+    // A simple call recorder for OsControl
     #[derive(Clone, Default)]
     struct MockOs {
         pub warnings: Arc<Mutex<u32>>,
@@ -112,12 +126,10 @@ mod tests {
             *self.shutdowns.lock().unwrap() += 1;
             Ok(())
         }
-        fn warn_interval(&self) -> TokioDuration {
-            TokioDuration::from_millis(1) // super-kurz, damit der Loop schnell hochzählt
-        }
+        
     }
 
-    /// Hilfsfunktion: State mit individuellem Startzeitpunkt erzeugen
+    /// Helper function: Create state with a custom start time
     fn write_state(start: chrono::DateTime<Utc>, path: &std::path::Path) {
         let data = serde_json::to_string(&start.to_rfc3339()).unwrap();
         std::fs::write(path, data).unwrap();
@@ -125,7 +137,7 @@ mod tests {
 
     #[tokio::test]
     async fn warning_phase_sets_banner_and_warns() {
-        // 1) Config: Warndauer 1 Tag, Reboot 1 Tag
+        // 1) Config: Warn duration 1 day, reboot 1 day
         let cfg = Config {
             warn_message: "X".into(),
             warn_duration_days: 1,
@@ -133,45 +145,45 @@ mod tests {
             warn_interval_seconds: 1,
         };
 
-        // 2) State: gerade erst gestartet
+        // 2) State: just started
         let tmp = tempfile::tempdir().unwrap();
         let state_path = tmp.path().join("state.json");
         write_state(Utc::now(), &state_path);
 
-        // 3) Temporäres Inject: override load_or_init_state, z.B. via ENV-Var
+        // 3) Temporary inject: override load_or_init_state, e.g. via ENV var
         std::env::set_var("STATE_PATH", &state_path);
 
-        // 4) Mock und Service starten (in Tokio-Task, aber Timeout setzen)
+        // 4) Start mock and service (in Tokio task, but set a timeout)
         let os = MockOs::default();
         let os_clone = os.clone();
         let handle = tokio::spawn(async move {
-            // run_service blockiert im Warn-Loop
+            // run_service blocks in the warning loop
             run_service(os_clone, cfg).await.unwrap();
         });
 
-        // kurz warten
+        // wait a bit
         tokio::time::sleep(TokioDuration::from_millis(10)).await;
 
         // 5) Assertions
         assert_eq!(*os.banner.lock().unwrap(), Some("X".into()));
         assert!(*os.warnings.lock().unwrap() > 0);
 
-        // Aufräumen
+        // Clean up
         handle.abort();
     }
 
-    #[tokio::test]
+        #[tokio::test]
     async fn reboot_phase_triggers_reboots() {
         let cfg = Config {
             warn_message: "X".into(),
-            warn_duration_days: 0,    // Warnphase sofort vorbei
+            warn_duration_days: 0,    // Warning phase immediately over
             reboot_duration_days: 1,
             warn_interval_seconds: 1,
         };
         let tmp = tempfile::tempdir().unwrap();
         let state_path = tmp.path().join("state.json");
-        // Start vor mehr als 1 Tag → wir sind schon in Reboot-Phase
-        write_state(Utc::now() - ChronoDuration::days(2), &state_path);
+        // Start more than 1 day ago -> we are already in reboot phase
+        write_state(Utc::now(), &state_path);
         std::env::set_var("STATE_PATH", &state_path);
 
         let os = MockOs::default();
@@ -190,18 +202,18 @@ mod tests {
         let cfg = Config {
             warn_message: "X".into(),
             warn_duration_days: 0,
-            reboot_duration_days: 0,  // Reboot-Phase sofort vorbei
+            reboot_duration_days: 0,  // Reboot-Phase immediately over
             warn_interval_seconds: 1,
         };
         let tmp = tempfile::tempdir().unwrap();
         let state_path = tmp.path().join("state.json");
-        // Start vor 1 Woche → direkt Shutdown
+        // Start 1 week ago -> immediate shutdown
         write_state(Utc::now() - ChronoDuration::days(7), &state_path);
         std::env::set_var("STATE_PATH", &state_path);
 
         let os = MockOs::default();
         run_service(os.clone(), cfg).await.unwrap();
-        // Direkt statt Loop: shutdown einmal aufgerufen
+        // Direct instead of loop: shutdown called once
         assert_eq!(*os.shutdowns.lock().unwrap(), 1);
     }
 }

@@ -1,18 +1,15 @@
 use super::os_control::OsControl;
-use anyhow::Result;
-use tokio::process::Command;
-use std::process::Command as StdCommand;
-use tokio::time::Duration;
+use anyhow::{Context, Result};
 use std::fs;
+use std::process::Command as StdCommand;
+use tokio::process::Command;
 
-pub struct LinuxControl {
-    interval: Duration,
-}
+pub struct LinuxControl {}
 
 impl LinuxControl {
     pub fn new() -> Self {
-        // Interval später aus Config übergeben, hier Default
-        Self { interval: Duration::from_secs(3600) }
+        // The interval will be passed from the config later, this is a default for now
+        Self {}
     }
 }
 
@@ -22,54 +19,78 @@ impl OsControl for LinuxControl {
         let _ = Command::new("wall")
             .arg(message)
             .status()
-            .await;
+            .await
+            .context("Failed to execute `wall` command");
     }
 
-
-    /// Setzt oder entfernt das GNOME/GDM Login-Banner
+    /// Sets or removes the GNOME/GDM login banner
     fn set_login_banner(&self, message: Option<&str>) -> Result<()> {
-        // Pfad zur dconf-Override-Datei für GDM
+        // Path to the dconf override file for GDM
         const OVERRIDE_PATH: &str = "/etc/dconf/db/gdm.d/01-warn-message";
 
+        // Ensure the directory exists
+        if let Some(parent) = std::path::Path::new(OVERRIDE_PATH).parent() {
+            fs::create_dir_all(parent).with_context(|| {
+                format!(
+                    "Failed to create directory `{:?}`. Try running with sudo.",
+                    parent
+                )
+            })?;
+        }
+
         if let Some(msg) = message {
-            // Banner aktivieren und Text setzen
+            // Activate banner and set text
             let content = format!(
-r#"[org/gnome/login-screen]
+                r#"[org/gnome/login-screen]
 banner-message-enable=true
 banner-message-text='{}'
 "#,
-                msg.replace('\'', "\\'")
+                msg.replace('\'', "'")
             );
-            fs::write(OVERRIDE_PATH, content)?;
+            fs::write(OVERRIDE_PATH, content).with_context(|| {
+                format!(
+                    "Failed to write to `{}`. Try running with sudo.",
+                    OVERRIDE_PATH
+                )
+            })?;
         } else {
-            // Banner deaktivieren
+            // Deactivate banner
             let disable = "[org/gnome/login-screen]\nbanner-message-enable=false\n";
-            fs::write(OVERRIDE_PATH, disable)?;
+            fs::write(OVERRIDE_PATH, disable).with_context(|| {
+                format!(
+                    "Failed to write to `{}`. Try running with sudo.",
+                    OVERRIDE_PATH
+                )
+            })?;
         }
 
-        // dconf-Datenbank neu aufbauen, damit GDM das neue Banner übernimmt
+        // Rebuild the dconf database so that GDM picks up the new banner
         let status = StdCommand::new("dconf")
             .arg("update")
-            .status()?;
+            .status()
+            .context("Failed to execute `dconf update`. Is `dconf-cli` installed?")?;
         if !status.success() {
-            anyhow::bail!("dconf update failed with status {}", status);
+            anyhow::bail!("`dconf update` failed with status {}", status);
         }
 
         Ok(())
     }
 
-
     async fn reboot(&self) -> Result<()> {
-        let _ = Command::new("systemctl").arg("reboot").status().await;
+        let _ = Command::new("systemctl")
+            .arg("reboot")
+            .status()
+            .await
+            .context("Failed to execute `systemctl reboot`")?;
         Ok(())
     }
 
     async fn shutdown(&self) -> Result<()> {
-        let _ = Command::new("systemctl").arg("poweroff").status().await;
+        let _ = Command::new("systemctl")
+            .arg("poweroff")
+            .status()
+            .await
+            .context("Failed to execute `systemctl poweroff`")?;
         Ok(())
-    }
-
-    fn warn_interval(&self) -> Duration {
-        self.interval
     }
 }

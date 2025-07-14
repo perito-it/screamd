@@ -1,17 +1,15 @@
 use super::os_control::OsControl;
 use anyhow::Result;
 use tokio::process::Command;
-use tokio::time::Duration;
+
 use winreg::enums::*;
 use winreg::RegKey;
 
-pub struct WindowsControl {
-    interval: Duration,
-}
+pub struct WindowsControl {}
 
 impl WindowsControl {
     pub fn new() -> Result<Self> {
-        Ok(Self { interval: Duration::from_secs(3600) })
+        Ok(Self {})
     }
 }
 
@@ -22,7 +20,7 @@ impl OsControl for WindowsControl {
     }
 
     fn set_login_banner(&self, message: Option<&str>) -> Result<()> {
-        // Registry-Schreibzugriff wie zuvor beschrieben
+        // Registry access as described before
         // ...
         Ok(())
     }
@@ -37,7 +35,5 @@ impl OsControl for WindowsControl {
         Ok(())
     }
 
-    fn warn_interval(&self) -> Duration {
-        self.interval
-    }
+    
 }
