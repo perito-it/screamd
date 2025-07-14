@@ -1,0 +1,12 @@
+[Unit]
+Description=A service that periodically reminds the user to take a break and eventually reboots the system.
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/screamd
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
