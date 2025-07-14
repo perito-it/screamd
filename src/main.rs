@@ -10,11 +10,15 @@ mod windows_control;
 use service_core::run_service;
 
 fn load_config() -> Result<service_core::Config> {
-    let exe_path = std::env::current_exe().context("Failed to get current executable path")?;
-    let exe_dir = exe_path
+    #[cfg(target_os = "linux")]
+    let config_path = std::path::PathBuf::from("/etc/screamd/config.toml");
+
+    #[cfg(not(target_os = "linux"))]
+    let config_path = std::env::current_exe()
+        .context("Failed to get current executable path")?
         .parent()
-        .context("Failed to get parent directory of executable")?;
-    let config_path = exe_dir.join("config.toml");
+        .context("Failed to get parent directory of executable")?
+        .join("config.toml");
 
     let config_str = std::fs::read_to_string(&config_path)
         .with_context(|| format!("Failed to read config file at `{}`", config_path.display()))?;

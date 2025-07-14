@@ -3,6 +3,7 @@ use anyhow::{Context, Result};
 use chrono::{Duration as ChronoDuration, Utc};
 use serde::Deserialize;
 use std::fs;
+use std::fmt;
 use std::sync::Arc;
 
 #[derive(Deserialize, Clone)]
@@ -13,6 +14,17 @@ pub struct Config {
     pub warn_interval_seconds: u64,
 }
 
+impl fmt::Display for Config {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Warn Message: {}\n  Warn Duration: {} days\n  Reboot Duration: {} days\n  Warn Interval: {} seconds",
+            self.warn_message,
+            self.warn_duration_days,
+            self.reboot_duration_days,
+            self.warn_interval_seconds
+        )
+    }
+}
+
 struct State {
     start_time: chrono::DateTime<Utc>,
 }
@@ -21,6 +33,7 @@ pub async fn run_service<C: OsControl>(
     os: C,
     config: Config,
 ) -> anyhow::Result<()> {
+    println!("Service started with configuration:\n{}", config);
     let state = load_or_init_state()?;
     let now = Utc::now();
     let warn_deadline = state.start_time + ChronoDuration::days(config.warn_duration_days);
@@ -31,8 +44,13 @@ pub async fn run_service<C: OsControl>(
 
     // Set banner
     if now < warn_deadline {
+        println!("Current status: Warning phase. Setting login banner.");
         os.set_login_banner(Some(&config.warn_message))?;
+    } else if now < reboot_deadline {
+        println!("Current status: Reboot phase. Login banner will not be set.");
+        os.set_login_banner(None)?;
     } else {
+        println!("Current status: Shutdown phase. Login banner will not be set.");
         os.set_login_banner(None)?;
     }
 
@@ -43,7 +61,9 @@ pub async fn run_service<C: OsControl>(
         let interval = std::time::Duration::from_secs(config.warn_interval_seconds);
         tokio::spawn(async move {
             loop {
+                println!("Showing warning message.");
                 os_clone.show_warning(&msg).await;
+                println!("Sleeping for {} seconds.", interval.as_secs());
                 tokio::time::sleep(interval).await;
             }
         });
@@ -55,10 +75,13 @@ pub async fn run_service<C: OsControl>(
     } else if now < reboot_deadline {
         let os_clone = os.clone();
         loop {
+            println!("Initiating reboot.");
             os_clone.reboot().await?;
+            println!("Sleeping for 24 hours before next reboot attempt.");
             tokio::time::sleep(tokio::time::Duration::from_secs(24 * 3600)).await;
         }
     } else {
+        println!("Initiating shutdown.");
         os.shutdown().await?;
     }
 
