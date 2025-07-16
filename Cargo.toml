@@ -3,20 +3,18 @@ name = "screamd"
 version = "0.1.0"
 edition = "2021"
 
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
 [dependencies]
-tokio = { version = "1.28", features = [ "macros", "rt-multi-thread",  "time", "process" ] }
-anyhow = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-toml = "0.5"
-chrono = { version = "0.4", features = ["serde"] }
-async-trait = "0.1"
-tempfile = "3"
+anyhow = "1.0.86"
+async-trait = "0.1.81"
+chrono = { version = "0.4.38", features = ["serde"] }
+serde = { version = "1.0.204", features = ["derive"] }
+serde_json = "1.0.121"
+tempfile = "3.10.1"
+tokio = { version = "1.38.1", features = ["full"] }
+toml = "0.8.14"
 
-# Für Windows:
-winreg = { version = "0.10", optional = true }
-
-[features]
-# optionalen Windows-Code nur auf Windows aktivieren
-windows = ["winreg"]
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52.0"
 

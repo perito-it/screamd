@@ -4,6 +4,7 @@ use chrono::{Duration as ChronoDuration, Utc};
 use serde::Deserialize;
 use std::fs;
 use std::fmt;
+use std::path::Path;
 use std::sync::Arc;
 
 #[derive(Deserialize, Clone)]
@@ -32,9 +33,10 @@ struct State {
 pub async fn run_service<C: OsControl>(
     os: C,
     config: Config,
+    state_path: &Path,
 ) -> anyhow::Result<()> {
     println!("Service started with configuration:\n{}", config);
-    let state = load_or_init_state()?;
+    let state = load_or_init_state(state_path)?;
     let now = Utc::now();
     let warn_deadline = state.start_time + ChronoDuration::days(config.warn_duration_days);
     let reboot_deadline = warn_deadline + ChronoDuration::days(config.reboot_duration_days);
@@ -46,12 +48,15 @@ pub async fn run_service<C: OsControl>(
     if now < warn_deadline {
         println!("Current status: Warning phase. Setting login banner.");
         os.set_login_banner(Some(&config.warn_message))?;
+        os.set_shell_login_banner(Some(&config.warn_message))?;
     } else if now < reboot_deadline {
         println!("Current status: Reboot phase. Login banner will not be set.");
         os.set_login_banner(None)?;
+        os.set_shell_login_banner(None)?;
     } else {
         println!("Current status: Shutdown phase. Login banner will not be set.");
         os.set_login_banner(None)?;
+        os.set_shell_login_banner(None)?;
     }
 
     // Warning loop
@@ -88,20 +93,8 @@ pub async fn run_service<C: OsControl>(
     Ok(())
 }
 
-fn load_or_init_state() -> Result<State> {
-    // Try to get path from env var, otherwise build it from exe path
-    let path = match std::env::var("STATE_PATH") {
-        Ok(p) => std::path::PathBuf::from(p),
-        Err(_) => {
-            let exe_path = std::env::current_exe().context("Failed to get current executable path")?;
-            let exe_dir = exe_path
-                .parent()
-                .context("Failed to get parent directory of executable")?;
-            exe_dir.join("state.json")
-        }
-    };
-
-    if let Ok(s) = fs::read_to_string(&path) {
+fn load_or_init_state(path: &Path) -> Result<State> {
+    if let Ok(s) = fs::read_to_string(path) {
         let t: String = serde_json::from_str(&s)
             .with_context(|| format!("Failed to deserialize state from {}", path.display()))?;
         let dt = chrono::DateTime::parse_from_rfc3339(&t)
@@ -110,7 +103,7 @@ fn load_or_init_state() -> Result<State> {
         Ok(State { start_time: dt })
     } else {
         let now = Utc::now();
-        fs::write(&path, serde_json::to_string(&now.to_rfc3339())?)
+        fs::write(path, serde_json::to_string(&now.to_rfc3339())?)
             .with_context(|| format!("Failed to write initial state to {}", path.display()))?;
         Ok(State { start_time: now })
     }
@@ -130,6 +123,7 @@ mod tests {
         pub reboots: Arc<Mutex<u32>>,
         pub shutdowns: Arc<Mutex<u32>>,
         pub banner: Arc<Mutex<Option<String>>>,
+        pub shell_banner: Arc<Mutex<Option<String>>>,
     }
 
     #[async_trait::async_trait]
@@ -139,6 +133,10 @@ mod tests {
         }
         fn set_login_banner(&self, message: Option<&str>) -> anyhow::Result<()> {
             *self.banner.lock().unwrap() = message.map(|s| s.to_string());
+            Ok(())
+        }
+        fn set_shell_login_banner(&self, message: Option<&str>) -> anyhow::Result<()> {
+            *self.shell_banner.lock().unwrap() = message.map(|s| s.to_string());
             Ok(())
         }
         async fn reboot(&self) -> anyhow::Result<()> {
@@ -173,21 +171,18 @@ mod tests {
         let state_path = tmp.path().join("state.json");
         write_state(Utc::now(), &state_path);
 
-        // 3) Temporary inject: override load_or_init_state, e.g. via ENV var
-        std::env::set_var("STATE_PATH", &state_path);
-
-        // 4) Start mock and service (in Tokio task, but set a timeout)
+        // 3) Start mock and service (in Tokio task, but set a timeout)
         let os = MockOs::default();
         let os_clone = os.clone();
         let handle = tokio::spawn(async move {
             // run_service blocks in the warning loop
-            run_service(os_clone, cfg).await.unwrap();
+            run_service(os_clone, cfg, &state_path).await.unwrap();
         });
 
         // wait a bit
         tokio::time::sleep(TokioDuration::from_millis(10)).await;
 
-        // 5) Assertions
+        // 4) Assertions
         assert_eq!(*os.banner.lock().unwrap(), Some("X".into()));
         assert!(*os.warnings.lock().unwrap() > 0);
 
@@ -207,12 +202,11 @@ mod tests {
         let state_path = tmp.path().join("state.json");
         // Start more than 1 day ago -> we are already in reboot phase
         write_state(Utc::now(), &state_path);
-        std::env::set_var("STATE_PATH", &state_path);
 
         let os = MockOs::default();
         let os_clone = os.clone();
         let handle = tokio::spawn(async move {
-            run_service(os_clone, cfg).await.unwrap();
+            run_service(os_clone, cfg, &state_path).await.unwrap();
         });
 
         tokio::time::sleep(TokioDuration::from_millis(10)).await;
@@ -232,12 +226,10 @@ mod tests {
         let state_path = tmp.path().join("state.json");
         // Start 1 week ago -> immediate shutdown
         write_state(Utc::now() - ChronoDuration::days(7), &state_path);
-        std::env::set_var("STATE_PATH", &state_path);
 
         let os = MockOs::default();
-        run_service(os.clone(), cfg).await.unwrap();
+        run_service(os.clone(), cfg, &state_path).await.unwrap();
         // Direct instead of loop: shutdown called once
         assert_eq!(*os.shutdowns.lock().unwrap(), 1);
     }
 }
-

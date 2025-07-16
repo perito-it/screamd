@@ -4,9 +4,11 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
+User=screamd
 ExecStart=/usr/local/bin/screamd
 Restart=on-failure
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target

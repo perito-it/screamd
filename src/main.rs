@@ -59,15 +59,22 @@ async fn main() -> Result<()> {
 
     #[cfg(target_os = "linux")]
     {
+        let state_path = std::path::PathBuf::from("/var/lib/screamd/state.json");
         let os = linux_control::LinuxControl::new();
-        run_service(os, config).await?;
+        run_service(os, config, &state_path).await?;
     }
 
-    #[cfg(all(target_os = "windows", feature = "windows"))]
+    #[cfg(target_os = "windows")]
     {
+        let state_path = std::env::current_exe()
+            .context("Failed to get current executable path")?
+            .parent()
+            .context("Failed to get parent directory of executable")?
+            .join("state.json");
         let os = windows_control::WindowsControl::new()?;
-        run_service(os, config).await?;
+        run_service(os, config, &state_path).await?;
     }
 
     Ok(())
 }
+

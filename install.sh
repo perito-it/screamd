@@ -1,4 +1,4 @@
-#!/bin/bash
+'''#!/bin/bash
 
 # Function to build the release binary
 build() {
@@ -18,6 +18,12 @@ install() {
         exit 1
     fi
 
+    # Create a non-root user and group for the service
+    if ! id -u screamd >/dev/null 2>&1; then
+        echo "Creating screamd user and group..."
+        useradd -r -s /bin/false screamd
+    fi
+
     # Create configuration directory
     CONFIG_DIR="/etc/screamd"
     echo "Creating configuration directory at $CONFIG_DIR..."
@@ -28,11 +34,24 @@ install() {
     cp target/release/screamd /usr/local/bin/screamd
     cp config/config.toml "$CONFIG_DIR/config.toml"
 
+    # Set permissions
+    chown -R screamd:screamd "$CONFIG_DIR"
+    chmod 700 "$CONFIG_DIR"
+    chmod 600 "$CONFIG_DIR/config.toml"
+    chown root:root /usr/local/bin/screamd
+    chmod 755 /usr/local/bin/screamd
+
+    # Install the sudoers file
+    echo "Installing sudoers file..."
+    cp config/screamd.sudoers /etc/sudoers.d/screamd
+    chmod 440 /etc/sudoers.d/screamd
+
     # Install the systemd service
     SERVICE_FILE="screamd.service"
     SYSTEMD_DIR="/etc/systemd/system"
     echo "Installing systemd service file to $SYSTEMD_DIR..."
     cp "$SERVICE_FILE" "$SYSTEMD_DIR/$SERVICE_FILE"
+    chmod 644 "$SYSTEMD_DIR/$SERVICE_FILE"
 
     # Reload systemd, enable and start the service
     echo "Reloading systemd, enabling and starting screamd service..."
@@ -58,3 +77,4 @@ case "$1" in
         exit 1
         ;;
 esac
+'''
