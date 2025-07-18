@@ -1,6 +1,6 @@
 use super::os_control::OsControl;
 use anyhow::{Context, Result};
-use std::fs;
+use std::io::Write;
 use std::process::Command as StdCommand;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
