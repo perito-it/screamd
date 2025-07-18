@@ -85,6 +85,9 @@ uninstall() {
     echo "Removing sudoers file..."
     rm -f /etc/sudoers.d/screamd
 
+    echo "Removing login banner..."
+    rm -f /etc/profile.d/screamd-banner.sh
+
     echo "Removing screamd binary..."
     rm -f /usr/local/bin/screamd
 
