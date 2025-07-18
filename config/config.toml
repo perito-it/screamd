@@ -1,4 +1,18 @@
-warn_message = "Do you still need this system? inform info@screamd" 
+warn_message = '''
+
+################################################################################
+#                                                                              #
+#                          !!! SYSTEM WARNING !!!                              #
+#                                                                              #
+#   This system is scheduled for decommissioning. Please save your work and    #
+#   log off. If you still require access to this system, please contact        #
+#   your system administrator immediately.                                     #
+#                                                                              #
+#   Contact: info@screamd                                                      #
+#                                                                              #
+################################################################################
+
+''' 
 warn_duration_days = 14
 reboot_duration_days = 14
 warn_interval_seconds = 3600
