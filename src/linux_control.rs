@@ -58,7 +58,7 @@ impl OsControl for LinuxControl {
 
         if let Some(msg) = message {
             // Activate banner and set text, escaping characters for dconf
-            let escaped_msg = msg.replace('\\', "\\").replace('\'', "\'");
+            let escaped_msg = msg.replace('\\', "\\\\").replace('\'', "\\'").replace('\n', "\\n").replace('\r', "\\r");
             let content = format!(
                 r#"[org/gnome/login-screen]
 banner-message-enable=true
