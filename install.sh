@@ -1,4 +1,4 @@
-'''#!/bin/bash
+#!/bin/bash
 
 # Function to build the release binary
 build() {
@@ -62,6 +62,48 @@ install() {
     echo "Installation complete. The screamd service is now running."
 }
 
+# Function to uninstall the service
+uninstall() {
+    # This part of the script must be run as root
+    if [ "$(id -u)" -ne 0 ]; then
+        echo "Uninstallation requires root privileges. Please run with sudo." >&2
+        exit 1
+    fi
+
+    SERVICE_FILE="screamd.service"
+    SYSTEMD_DIR="/etc/systemd/system"
+    CONFIG_DIR="/etc/screamd"
+
+    echo "Stopping and disabling screamd service..."
+    systemctl stop "$SERVICE_FILE" >/dev/null 2>&1
+    systemctl disable "$SERVICE_FILE" >/dev/null 2>&1
+
+    echo "Removing systemd service file..."
+    rm -f "$SYSTEMD_DIR/$SERVICE_FILE"
+    systemctl daemon-reload
+
+    echo "Removing sudoers file..."
+    rm -f /etc/sudoers.d/screamd
+
+    echo "Removing screamd binary..."
+    rm -f /usr/local/bin/screamd
+
+    echo "Removing configuration directory..."
+    rm -rf "$CONFIG_DIR"
+
+    if id "screamd" &>/dev/null; then
+        echo "Removing screamd user..."
+        userdel screamd
+    fi
+
+    if getent group "screamd" &>/dev/null; then
+        echo "Removing screamd group..."
+        groupdel screamd
+    fi
+
+    echo "Uninstallation complete."
+}
+
 # Main script logic
 case "$1" in
     build)
@@ -70,11 +112,14 @@ case "$1" in
     install)
         install
         ;;
+    uninstall)
+        uninstall
+        ;;
     *)
-        echo "Usage: $0 {build|install}"
+        echo "Usage: $0 {build|install|uninstall}"
         echo "First, run '$0 build' as a regular user."
         echo "Then, run 'sudo $0 install' to install the service."
+        echo "To uninstall, run 'sudo $0 uninstall'."
         exit 1
         ;;
 esac
-'''
