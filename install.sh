@@ -24,10 +24,13 @@ install() {
         useradd -r -s /bin/false screamd
     fi
 
-    # Create configuration directory
+    # Create configuration and state directories
     CONFIG_DIR="/etc/screamd"
+    STATE_DIR="/var/lib/screamd"
     echo "Creating configuration directory at $CONFIG_DIR..."
     mkdir -p "$CONFIG_DIR"
+    echo "Creating state directory at $STATE_DIR..."
+    mkdir -p "$STATE_DIR"
 
     # Copy the binary and configuration
     echo "Installing screamd binary to /usr/local/bin/ and config to $CONFIG_DIR..."
@@ -38,6 +41,8 @@ install() {
     chown -R screamd:screamd "$CONFIG_DIR"
     chmod 700 "$CONFIG_DIR"
     chmod 600 "$CONFIG_DIR/config.toml"
+    chown -R screamd:screamd "$STATE_DIR"
+    chmod 700 "$STATE_DIR"
     chown root:root /usr/local/bin/screamd
     chmod 755 /usr/local/bin/screamd
 
@@ -93,6 +98,9 @@ uninstall() {
 
     echo "Removing configuration directory..."
     rm -rf "$CONFIG_DIR"
+
+    echo "Removing state directory..."
+    rm -rf "/var/lib/screamd"
 
     if id "screamd" &>/dev/null; then
         echo "Removing screamd user..."
