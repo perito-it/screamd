@@ -45,14 +45,15 @@ impl OsControl for LinuxControl {
         // Path to the dconf override file for GDM
         const OVERRIDE_PATH: &str = "/etc/dconf/db/gdm.d/01-warn-message";
 
-        // Ensure the directory exists
-        if let Some(parent) = std::path::Path::new(OVERRIDE_PATH).parent() {
-            fs::create_dir_all(parent).with_context(|| {
-                format!(
-                    "Failed to create directory `{:?}`. Try running with sudo.",
-                    parent
-                )
-            })?;
+        // Ensure the directory exists using sudo mkdir -p
+        let mkdir_status = StdCommand::new("sudo")
+            .arg("mkdir")
+            .arg("-p")
+            .arg(std::path::Path::new(OVERRIDE_PATH).parent().unwrap())
+            .status()
+            .context("Failed to execute `sudo mkdir -p`")?;
+        if !mkdir_status.success() {
+            anyhow::bail!("`sudo mkdir -p` failed with status {}", mkdir_status);
         }
 
         if let Some(msg) = message {
@@ -65,23 +66,62 @@ banner-message-text='{}'
 "#,
                 escaped_msg
             );
-            fs::write(OVERRIDE_PATH, content).with_context(|| {
-                format!(
-                    "Failed to write to `{}`. Try running with sudo.",
-                    OVERRIDE_PATH
-                )
-            })?;
+            // Use `sudo tee` to write the file content
+            let mut child = StdCommand::new("sudo")
+                .arg("tee")
+                .arg(OVERRIDE_PATH)
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::null()) // Don't care about tee's stdout
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .context("Failed to spawn `sudo tee` command for GDM banner")?;
+
+            // Write content to the child's stdin
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin
+                    .write_all(content.as_bytes())
+                    .context("Failed to write to `sudo tee` stdin for GDM banner")?;
+            }
+
+            // Wait for the command to finish and check for errors
+            let output = child
+                .wait_with_output()
+                .context("`sudo tee` command failed for GDM banner")?;
+            if !output.status.success() {
+                anyhow::bail!(
+                    "`sudo tee` failed with status {} for GDM banner: {}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
         } else {
-            // Deactivate banner
-            let disable = "[org/gnome/login-screen]
-banner-message-enable=false
-";
-            fs::write(OVERRIDE_PATH, disable).with_context(|| {
-                format!(
-                    "Failed to write to `{}`. Try running with sudo.",
-                    OVERRIDE_PATH
-                )
-            })?;
+            // Deactivate banner by writing to the file
+            let disable = "[org/gnome/login-screen]\nbanner-message-enable=false\n";
+            let mut child = StdCommand::new("sudo")
+                .arg("tee")
+                .arg(OVERRIDE_PATH)
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .context("Failed to spawn `sudo tee` command for GDM banner disable")?;
+
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin
+                    .write_all(disable.as_bytes())
+                    .context("Failed to write to `sudo tee` stdin for GDM banner disable")?;
+            }
+
+            let output = child
+                .wait_with_output()
+                .context("`sudo tee` command failed for GDM banner disable")?;
+            if !output.status.success() {
+                anyhow::bail!(
+                    "`sudo tee` failed with status {} for GDM banner disable: {}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
         }
 
         // Rebuild the dconf database so that GDM picks up the new banner
@@ -118,19 +158,63 @@ banner-message-enable=false
     }
 
     fn set_shell_login_banner(&self, message: Option<&str>) -> Result<()> {
+        use std::io::Write;
         const SCRIPT_PATH: &str = "/etc/profile.d/screamd-banner.sh";
+
         if let Some(msg) = message {
-            // Escape single quotes for the shell
+            // Escape single quotes for the shell, e.g. don't -> 'don'\''t'
             let escaped_msg = msg.replace('\'', "'\''");
             let content = format!("#!/bin/sh\necho '{}'", escaped_msg);
-            fs::write(SCRIPT_PATH, content)?;
+
+            // Use `sudo tee` to write the file content
+            let mut child = StdCommand::new("sudo")
+                .arg("tee")
+                .arg(SCRIPT_PATH)
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::null()) // Don't care about tee's stdout
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .context("Failed to spawn `sudo tee` command")?;
+
+            // Write content to the child's stdin
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin
+                    .write_all(content.as_bytes())
+                    .context("Failed to write to `sudo tee` stdin")?;
+            }
+
+            // Wait for the command to finish and check for errors
+            let output = child
+                .wait_with_output()
+                .context("`sudo tee` command failed")?;
+            if !output.status.success() {
+                anyhow::bail!(
+                    "`sudo tee` failed with status {}: {}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+
             // Make the script executable
-            let perms = std::os::unix::fs::PermissionsExt::from_mode(0o755);
-            fs::set_permissions(SCRIPT_PATH, perms)?;
+            let chmod_status = StdCommand::new("sudo")
+                .arg("chmod")
+                .arg("755")
+                .arg(SCRIPT_PATH)
+                .status()
+                .context("Failed to execute `sudo chmod`")?;
+            if !chmod_status.success() {
+                anyhow::bail!("`sudo chmod` failed with status {}", chmod_status);
+            }
         } else {
-            // Remove the file if it exists
-            if std::path::Path::new(SCRIPT_PATH).exists() {
-                fs::remove_file(SCRIPT_PATH)?;
+            // Remove the file using `sudo rm -f`
+            let rm_status = StdCommand::new("sudo")
+                .arg("rm")
+                .arg("-f") // -f ignores "file not found" errors
+                .arg(SCRIPT_PATH)
+                .status()
+                .context("Failed to execute `sudo rm`")?;
+            if !rm_status.success() {
+                anyhow::bail!("`sudo rm` failed with status {}", rm_status);
             }
         }
         Ok(())
