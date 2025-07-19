@@ -2,7 +2,6 @@ use super::os_control::OsControl;
 use anyhow::{Context, Result};
 use std::io::Write;
 use std::process::Command as StdCommand;
-use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
 pub struct LinuxControl {}
@@ -17,27 +16,9 @@ impl LinuxControl {
 #[async_trait::async_trait]
 impl OsControl for LinuxControl {
     async fn show_warning(&self, message: &str) {
-        let mut child = match Command::new("sudo")
-            .arg("wall")
-            .stdin(std::process::Stdio::piped())
-            .spawn()
-        {
-            Ok(child) => child,
-            Err(e) => {
-                eprintln!("Failed to execute `wall` command: {}", e);
-                return;
-            }
-        };
-
-        if let Some(mut stdin) = child.stdin.take() {
-            if let Err(e) = stdin.write_all(message.as_bytes()).await {
-                eprintln!("Failed to write to `wall` stdin: {}", e);
-            }
-        }
-
-        if let Err(e) = child.wait().await {
-            eprintln!("`wall` command failed: {}", e);
-        }
+        // The `wall` command has been removed due to unreliability.
+        // Desktop notifications will be implemented here in the future.
+        println!("Warning message: {}", message);
     }
 
     /// Sets or removes the GNOME/GDM login banner

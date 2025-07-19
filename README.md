@@ -8,7 +8,7 @@
 
 The primary purpose of `screamd` is to execute the scream test, which consists of the following phases:
 
-1.  **Warning Phase:** For a configurable duration, users and administrators are notified with a message. By default, this is done via the `wall` command on Linux, which displays a message to all logged-in users.
+1.  **Warning Phase:** For a configurable duration, users and administrators are notified with a message.
 2.  **Reboot Phase:** After the warning period, the machine is rebooted once a day for a configurable number of days.
 3.  **Shutdown Phase:** If no one intervenes during the warning or reboot phases, the system is shut down permanently.
 
@@ -16,7 +16,6 @@ The primary purpose of `screamd` is to execute the scream test, which consists o
 
 `screamd` uses multiple methods to notify users of a pending decommissioning:
 
-*   **Wall Command:** A message is broadcast to all logged-in users using the `wall` command.
 *   **Login Banner:** A message is displayed at the login screen (GDM) and for shell logins.
 *   **GDM Login Screen:** The warning message is displayed on the GDM login screen, if GDM is in use.
 

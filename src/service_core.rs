@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 #[derive(Deserialize, Clone)]
 pub struct Config {
+    pub debug: bool,
     pub warn_message: String,
     pub warn_duration_days: i64,
     pub reboot_duration_days: i64,
@@ -17,7 +18,8 @@ pub struct Config {
 
 impl fmt::Display for Config {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Warn Message: {}\n  Warn Duration: {} days\n  Reboot Duration: {} days\n  Warn Interval: {} seconds",
+        write!(f, "Debug: {}\n  Warn Message: {}\n  Warn Duration: {} days\n  Reboot Duration: {} days\n  Warn Interval: {} seconds",
+            self.debug,
             self.warn_message,
             self.warn_duration_days,
             self.reboot_duration_days,
@@ -38,8 +40,21 @@ pub async fn run_service<C: OsControl>(
     println!("Service started with configuration:\n{}", config);
     let state = load_or_init_state(state_path)?;
     let now = Utc::now();
-    let warn_deadline = state.start_time + ChronoDuration::days(config.warn_duration_days);
-    let reboot_deadline = warn_deadline + ChronoDuration::days(config.reboot_duration_days);
+
+    let warn_duration = if config.debug {
+        ChronoDuration::minutes(config.warn_duration_days)
+    } else {
+        ChronoDuration::days(config.warn_duration_days)
+    };
+
+    let reboot_duration = if config.debug {
+        ChronoDuration::minutes(config.reboot_duration_days)
+    } else {
+        ChronoDuration::days(config.reboot_duration_days)
+    };
+
+    let warn_deadline = state.start_time + warn_duration;
+    let reboot_deadline = warn_deadline + reboot_duration;
 
     // Wrap the OS abstraction in an Arc
     let os = Arc::new(os);
@@ -160,6 +175,7 @@ mod tests {
     async fn warning_phase_sets_banner_and_warns() {
         // 1) Config: Warn duration 1 day, reboot 1 day
         let cfg = Config {
+            debug: false,
             warn_message: "X".into(),
             warn_duration_days: 1,
             reboot_duration_days: 1,
@@ -193,6 +209,7 @@ mod tests {
         #[tokio::test]
     async fn reboot_phase_triggers_reboots() {
         let cfg = Config {
+            debug: false,
             warn_message: "X".into(),
             warn_duration_days: 0,    // Warning phase immediately over
             reboot_duration_days: 1,
@@ -217,6 +234,7 @@ mod tests {
     #[tokio::test]
     async fn shutdown_after_reboot_phase() {
         let cfg = Config {
+            debug: false,
             warn_message: "X".into(),
             warn_duration_days: 0,
             reboot_duration_days: 0,  // Reboot-Phase immediately over

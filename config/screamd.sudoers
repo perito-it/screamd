@@ -1,2 +1,2 @@
 Defaults:screamd !requiretty
-screamd ALL=(ALL) NOPASSWD: /usr/bin/wall, /usr/bin/dconf update, /usr/bin/systemctl reboot, /usr/bin/systemctl poweroff, /usr/bin/tee /etc/profile.d/screamd-banner.sh, /usr/bin/chmod 755 /etc/profile.d/screamd-banner.sh, /usr/bin/rm -f /etc/profile.d/screamd-banner.sh, /usr/bin/tee /etc/dconf/db/gdm.d/01-warn-message, /usr/bin/mkdir -p /etc/dconf/db/gdm.d
+screamd ALL=(ALL) NOPASSWD: /usr/bin/dconf update, /usr/bin/systemctl reboot, /usr/bin/systemctl poweroff, /usr/bin/tee /etc/profile.d/screamd-banner.sh, /usr/bin/chmod 755 /etc/profile.d/screamd-banner.sh, /usr/bin/rm -f /etc/profile.d/screamd-banner.sh, /usr/bin/tee /etc/dconf/db/gdm.d/01-warn-message, /usr/bin/mkdir -p /etc/dconf/db/gdm.d
