@@ -1,5 +1,7 @@
 # screamd
 
+**⚠️ Warning: This service is currently in development and intended for testing purposes only. It is not yet fit for production use. ⚠️**
+
 `screamd` is a small service that implements the [scream-test](https://www.microsoft.com/insidetrack/blog/microsoft-uses-a-scream-test-to-silence-its-unused-servers/). This test helps identify unused servers by systematically warning users and then taking progressively more drastic actions.
 
 ## Purpose
