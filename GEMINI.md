@@ -9,6 +9,10 @@ After making any changes to the codebase, please run the following commands in o
 3.  `cargo test` - To run all tests.
 4.  `./install.sh build` - To test the release build
 
+## Dependencies
+*   Avoid introducing new dependencies unless absolutely necessary
+*   When introducing a new dependency, explain the reason
+
 ## Security Checks
 
 Regularly run the following commands to check for security issues:
