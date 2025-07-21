@@ -27,13 +27,12 @@ impl OsControl for LinuxControl {
 
         if let Some(msg) = message {
             // Escape characters for the dconf file format.
-            let escaped_msg = msg.replace('\\', "\\").replace('\'', "\'");
+            let escaped_msg = msg.replace('\\', "\\\\").replace('\'', "\\'");
             let content = format!(
                 r#"[org/gnome/login-screen]
 banner-message-enable=true
-banner-message-text='{}'
+banner-message-text='{escaped_msg}'
 "#,
-                escaped_msg
             );
             std::fs::write(OVERRIDE_PATH, content)?;
         } else {
@@ -54,8 +53,7 @@ banner-message-enable=false
 
         if !status.success() {
             eprintln!(
-                "`dconf update` failed with status: {}. Login banner may not be updated.",
-                status
+                "`dconf update` failed with status: {status}. Login banner may not be updated."
             );
         }
 
@@ -89,9 +87,11 @@ banner-message-enable=false
 
         if let Some(msg) = message {
             // Escape single quotes for the shell script.
-            let escaped_msg = msg.replace('\'', "'\''");
-            let content = format!("#!/bin/sh
-echo '{}'", escaped_msg);
+            let escaped_msg = msg.replace('\\', "\\\\").replace('\'', "'\\''");
+            let content = format!(
+                "#!/bin/sh
+echo '{escaped_msg}'",
+            );
             std::fs::write(SCRIPT_PATH, content)?;
         } else {
             // If no message is provided, remove the banner script.

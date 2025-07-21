@@ -45,14 +45,12 @@ fn load_config() -> Result<service_core::Config> {
     Ok(config)
 }
 
-
 #[tokio::main]
 async fn main() -> Result<()> {
-
     let config = match load_config() {
         Ok(cfg) => cfg,
         Err(e) => {
-            eprintln!("error loading config.toml: {:#}", e);
+            eprintln!("error loading config.toml: {e:#}");
             return Err(e);
         }
     };
@@ -77,4 +75,3 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
-

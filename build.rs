@@ -15,7 +15,7 @@ fn main() {
 
     // Copy the file
     fs::copy(&source_path, &dest_path).unwrap_or_else(|e| {
-        panic!("Failed to copy config.toml from {:?} to {:?}: {}", source_path, dest_path, e)
+        panic!("Failed to copy config.toml from {source_path:?} to {dest_path:?}: {e}")
     });
 
     // Re-run the build script if config.toml changes

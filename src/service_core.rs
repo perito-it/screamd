@@ -2,8 +2,8 @@ use crate::os_control::OsControl;
 use anyhow::{Context, Result};
 use chrono::{Duration as ChronoDuration, NaiveTime, TimeZone, Utc};
 use serde::Deserialize;
-use std::fs;
 use std::fmt;
+use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -39,7 +39,10 @@ pub async fn run_service<C: OsControl>(
     config: Config,
     state_path: &Path,
 ) -> anyhow::Result<()> {
-    println!("Service started with configuration:\n{}", config);
+    println!(
+        "Service started with configuration:
+{config}"
+    );
     let state = load_or_init_state(state_path)?;
     let now = Utc::now();
 
@@ -96,25 +99,32 @@ pub async fn run_service<C: OsControl>(
         std::future::pending::<()>().await;
     } else if now < reboot_deadline {
         let os_clone = os.clone();
-        let reboot_time = NaiveTime::parse_from_str(&config.reboot_time, "%H:%M:%S")
-            .or_else(|_| NaiveTime::parse_from_str(&config.reboot_time, "%H:%M"))
-            .with_context(|| format!("Invalid reboot_time format: {}", config.reboot_time))?;
-
-        loop {
-            let now = Utc::now();
-            let mut next_reboot = Utc.from_local_datetime(&now.date_naive().and_time(reboot_time)).unwrap();
-            if now >= next_reboot {
-                next_reboot = next_reboot + ChronoDuration::days(1);
-            }
-            let sleep_duration = next_reboot - now;
-
-            println!("Next reboot scheduled for: {}", next_reboot);
-            println!("Current time: {}", now);
-            println!("Sleep duration: {:?}", sleep_duration);
-            tokio::time::sleep(sleep_duration.to_std()?).await;
-
-            println!("Initiating reboot.");
+        if config.debug {
+            println!("Debug mode: Initiating immediate reboot as reboot period has ended.");
             os_clone.reboot().await?;
+        } else {
+            let reboot_time = NaiveTime::parse_from_str(&config.reboot_time, "%H:%M:%S")
+                .or_else(|_| NaiveTime::parse_from_str(&config.reboot_time, "%H:%M"))
+                .with_context(|| format!("Invalid reboot_time format: {}", config.reboot_time))?;
+
+            loop {
+                let now = Utc::now();
+                let mut next_reboot = Utc
+                    .from_local_datetime(&now.date_naive().and_time(reboot_time))
+                    .unwrap();
+                if now >= next_reboot {
+                    next_reboot += ChronoDuration::days(1);
+                }
+                let sleep_duration = next_reboot - now;
+
+                println!("Next reboot scheduled for: {next_reboot}");
+                println!("Current time: {now}");
+                println!("Sleep duration: {sleep_duration:?}");
+                tokio::time::sleep(sleep_duration.to_std()?).await;
+
+                println!("Initiating reboot.");
+                os_clone.reboot().await?;
+            }
         }
     } else {
         println!("Initiating shutdown.");
@@ -143,8 +153,8 @@ fn load_or_init_state(path: &Path) -> Result<State> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::{Duration as ChronoDuration, Utc};
     use std::sync::{Arc, Mutex};
-    use chrono::{Utc, Duration as ChronoDuration};
     use tokio::time::Duration as TokioDuration;
 
     // A simple call recorder for OsControl
@@ -178,7 +188,6 @@ mod tests {
             *self.shutdowns.lock().unwrap() += 1;
             Ok(())
         }
-        
     }
 
     /// Helper function: Create state with a custom start time
@@ -223,14 +232,14 @@ mod tests {
         handle.abort();
     }
 
-        #[tokio::test]
+    #[tokio::test]
     async fn reboot_phase_triggers_reboots() {
         let now = Utc::now();
         let reboot_time = now + ChronoDuration::seconds(1);
         let cfg = Config {
             debug: false,
             warn_message: "X".into(),
-            warn_duration_days: 0,    // Warning phase immediately over
+            warn_duration_days: 0, // Warning phase immediately over
             reboot_duration_days: 1,
             warn_interval_seconds: 1,
             reboot_time: reboot_time.format("%H:%M:%S").to_string(),
@@ -257,7 +266,7 @@ mod tests {
             debug: false,
             warn_message: "X".into(),
             warn_duration_days: 0,
-            reboot_duration_days: 0,  // Reboot-Phase immediately over
+            reboot_duration_days: 0, // Reboot-Phase immediately over
             warn_interval_seconds: 1,
             reboot_time: "12:00".into(),
         };

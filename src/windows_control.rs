@@ -26,14 +26,18 @@ impl OsControl for WindowsControl {
     }
 
     async fn reboot(&self) -> Result<()> {
-        let _ = Command::new("shutdown").args(&["/r", "/t", "0"]).status().await;
+        let _ = Command::new("shutdown")
+            .args(&["/r", "/t", "0"])
+            .status()
+            .await;
         Ok(())
     }
 
     async fn shutdown(&self) -> Result<()> {
-        let _ = Command::new("shutdown").args(&["/s", "/t", "0"]).status().await;
+        let _ = Command::new("shutdown")
+            .args(&["/s", "/t", "0"])
+            .status()
+            .await;
         Ok(())
     }
-
-    
 }
