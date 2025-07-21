@@ -37,6 +37,18 @@ install() {
     cp target/release/screamd /usr/local/bin/screamd
     cp config/config.toml "$CONFIG_DIR/config.toml"
 
+    # Create dconf directory for GDM banner
+    GDM_DCONF_DIR="/etc/dconf/db/gdm.d"
+    echo "Creating GDM dconf directory at $GDM_DCONF_DIR..."
+    mkdir -p "$GDM_DCONF_DIR"
+
+    # Create the shell login banner file
+    SHELL_BANNER_FILE="/etc/profile.d/screamd-banner.sh"
+    echo "Creating shell login banner file at $SHELL_BANNER_FILE..."
+    touch "$SHELL_BANNER_FILE"
+    chmod 644 "$SHELL_BANNER_FILE"
+    chown screamd:screamd "$SHELL_BANNER_FILE"
+
     # Set permissions
     chown -R screamd:screamd "$CONFIG_DIR"
     chmod 700 "$CONFIG_DIR"
@@ -46,10 +58,12 @@ install() {
     chown root:root /usr/local/bin/screamd
     chmod 755 /usr/local/bin/screamd
 
-    # Install the sudoers file
-    echo "Installing sudoers file..."
-    cp config/screamd.sudoers /etc/sudoers.d/screamd
-    chmod 440 /etc/sudoers.d/screamd
+    # Install the polkit rule file for shutdown/reboot
+    echo "Installing polkit rule file..."
+    POLKIT_RULES_DIR="/etc/polkit-1/rules.d"
+    mkdir -p "$POLKIT_RULES_DIR"
+    cp config/45-screamd-remote-shutdown.rules "$POLKIT_RULES_DIR/45-screamd-remote-shutdown.rules"
+    chmod 644 "$POLKIT_RULES_DIR/45-screamd-remote-shutdown.rules"
 
     # Install the systemd service
     SERVICE_FILE="screamd.service"
@@ -63,6 +77,10 @@ install() {
     systemctl daemon-reload
     systemctl enable "$SERVICE_FILE"
     systemctl start "$SERVICE_FILE"
+
+    # Update dconf database
+    echo "Updating dconf database..."
+    dconf update
 
     echo "Installation complete. The screamd service is now running."
 }
@@ -87,8 +105,8 @@ uninstall() {
     rm -f "$SYSTEMD_DIR/$SERVICE_FILE"
     systemctl daemon-reload
 
-    echo "Removing sudoers file..."
-    rm -f /etc/sudoers.d/screamd
+    echo "Removing polkit rule file..."
+    rm -f /etc/polkit-1/rules.d/45-screamd-remote-shutdown.rules
 
     echo "Removing login banner..."
     rm -f /etc/profile.d/screamd-banner.sh

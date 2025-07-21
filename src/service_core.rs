@@ -1,6 +1,6 @@
 use crate::os_control::OsControl;
 use anyhow::{Context, Result};
-use chrono::{Duration as ChronoDuration, Utc};
+use chrono::{Duration as ChronoDuration, NaiveTime, TimeZone, Utc};
 use serde::Deserialize;
 use std::fs;
 use std::fmt;
@@ -14,16 +14,18 @@ pub struct Config {
     pub warn_duration_days: i64,
     pub reboot_duration_days: i64,
     pub warn_interval_seconds: u64,
+    pub reboot_time: String,
 }
 
 impl fmt::Display for Config {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Debug: {}\n  Warn Message: {}\n  Warn Duration: {} days\n  Reboot Duration: {} days\n  Warn Interval: {} seconds",
+        write!(f, "Debug: {}\n  Warn Message: {}\n  Warn Duration: {} days\n  Reboot Duration: {} days\n  Warn Interval: {} seconds\n  Reboot Time: {}",
             self.debug,
             self.warn_message,
             self.warn_duration_days,
             self.reboot_duration_days,
-            self.warn_interval_seconds
+            self.warn_interval_seconds,
+            self.reboot_time
         )
     }
 }
@@ -94,11 +96,25 @@ pub async fn run_service<C: OsControl>(
         std::future::pending::<()>().await;
     } else if now < reboot_deadline {
         let os_clone = os.clone();
+        let reboot_time = NaiveTime::parse_from_str(&config.reboot_time, "%H:%M:%S")
+            .or_else(|_| NaiveTime::parse_from_str(&config.reboot_time, "%H:%M"))
+            .with_context(|| format!("Invalid reboot_time format: {}", config.reboot_time))?;
+
         loop {
+            let now = Utc::now();
+            let mut next_reboot = Utc.from_local_datetime(&now.date_naive().and_time(reboot_time)).unwrap();
+            if now >= next_reboot {
+                next_reboot = next_reboot + ChronoDuration::days(1);
+            }
+            let sleep_duration = next_reboot - now;
+
+            println!("Next reboot scheduled for: {}", next_reboot);
+            println!("Current time: {}", now);
+            println!("Sleep duration: {:?}", sleep_duration);
+            tokio::time::sleep(sleep_duration.to_std()?).await;
+
             println!("Initiating reboot.");
             os_clone.reboot().await?;
-            println!("Sleeping for 24 hours before next reboot attempt.");
-            tokio::time::sleep(tokio::time::Duration::from_secs(24 * 3600)).await;
         }
     } else {
         println!("Initiating shutdown.");
@@ -173,21 +189,22 @@ mod tests {
 
     #[tokio::test]
     async fn warning_phase_sets_banner_and_warns() {
-        // 1) Config: Warn duration 1 day, reboot 1 day
+        // Given a config with a 1-day warning and reboot duration
         let cfg = Config {
             debug: false,
             warn_message: "X".into(),
             warn_duration_days: 1,
             reboot_duration_days: 1,
             warn_interval_seconds: 1,
+            reboot_time: "12:00".into(),
         };
 
-        // 2) State: just started
+        // And a state file indicating the service has just started
         let tmp = tempfile::tempdir().unwrap();
         let state_path = tmp.path().join("state.json");
         write_state(Utc::now(), &state_path);
 
-        // 3) Start mock and service (in Tokio task, but set a timeout)
+        // When the service is run with a mock OS
         let os = MockOs::default();
         let os_clone = os.clone();
         let handle = tokio::spawn(async move {
@@ -195,10 +212,10 @@ mod tests {
             run_service(os_clone, cfg, &state_path).await.unwrap();
         });
 
-        // wait a bit
+        // After a short delay
         tokio::time::sleep(TokioDuration::from_millis(10)).await;
 
-        // 4) Assertions
+        // Then the banner should be set and warnings should be issued
         assert_eq!(*os.banner.lock().unwrap(), Some("X".into()));
         assert!(*os.warnings.lock().unwrap() > 0);
 
@@ -208,12 +225,15 @@ mod tests {
 
         #[tokio::test]
     async fn reboot_phase_triggers_reboots() {
+        let now = Utc::now();
+        let reboot_time = now + ChronoDuration::seconds(1);
         let cfg = Config {
             debug: false,
             warn_message: "X".into(),
             warn_duration_days: 0,    // Warning phase immediately over
             reboot_duration_days: 1,
             warn_interval_seconds: 1,
+            reboot_time: reboot_time.format("%H:%M:%S").to_string(),
         };
         let tmp = tempfile::tempdir().unwrap();
         let state_path = tmp.path().join("state.json");
@@ -226,7 +246,7 @@ mod tests {
             run_service(os_clone, cfg, &state_path).await.unwrap();
         });
 
-        tokio::time::sleep(TokioDuration::from_millis(10)).await;
+        tokio::time::sleep(TokioDuration::from_millis(1100)).await;
         assert!(*os.reboots.lock().unwrap() > 0);
         handle.abort();
     }
@@ -239,6 +259,7 @@ mod tests {
             warn_duration_days: 0,
             reboot_duration_days: 0,  // Reboot-Phase immediately over
             warn_interval_seconds: 1,
+            reboot_time: "12:00".into(),
         };
         let tmp = tempfile::tempdir().unwrap();
         let state_path = tmp.path().join("state.json");

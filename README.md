@@ -29,6 +29,7 @@ The configuration for `screamd` is located in `/etc/screamd/config.toml`. The fo
 *   `warn_duration_days`: The number of days the warning message will be shown.
 *   `reboot_duration_days`: The number of days the system will be rebooted daily after the warning period.
 *   `warn_interval_seconds`: The interval in seconds at which the warning message is displayed.
+*   `reboot_time`: The time of day (in HH:MM format) when daily reboots are performed.
 
 ## Installation
 

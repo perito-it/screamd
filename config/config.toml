@@ -17,3 +17,4 @@ debug = false
 warn_duration_days = 14
 reboot_duration_days = 14
 warn_interval_seconds = 3600
+reboot_time = "12:00"
