@@ -1,9 +1,4 @@
-## Purpose
-read README.md to understand how this software works
-
-## Architecture
-
-`screamd` is implemented as a Rust service that transitions through distinct operational phases: Warning, Reboot, and Shutdown. The core logic resides in `src/service_core.rs`, which orchestrates these phases based on a `Config` loaded from `config.toml` and persistent `State` stored in `state.json`. Operating system interactions (e.g., setting banners, rebooting, shutting down) are abstracted through the `OsControl` trait defined in `src/os_control.rs`, with platform-specific implementations found in `src/linux_control.rs` and `src/windows_control.rs`. Asynchronous operations are handled using the `tokio` runtime.
+always build and run tests after modifications
 
 ## Workflow after making changes
 
@@ -12,6 +7,7 @@ After making any changes to the codebase, please run the following commands in o
 1.  `cargo fmt` - To format the code.
 2.  `cargo clippy -- -D warnings` - To catch common mistakes and treat warnings as errors.
 3.  `cargo test` - To run all tests.
+4.  `./install.sh build` - To test the release build
 
 ## Security Checks
 
@@ -19,3 +15,21 @@ Regularly run the following commands to check for security issues:
 
 *   `cargo audit` - Checks for known vulnerabilities in dependencies.
 *   `cargo geiger` - Scans for `unsafe` Rust code.
+
+## Key Technologies/Dependencies
+
+This project utilizes the following key Rust crates:
+
+*   `anyhow`: For flexible and ergonomic error handling.
+*   `async-trait`: Enables `async` functions in traits.
+*   `chrono`: For date and time manipulation.
+*   `serde`: A framework for serializing and deserializing Rust data structures efficiently and generically.
+*   `serde_json`: JSON support for `serde`.
+*   `tempfile`: For creating temporary files and directories.
+*   `tokio`: A runtime for writing asynchronous applications with Rust.
+*   `toml`: For parsing and serializing TOML configuration files.
+*   `winreg` (Windows-specific): For interacting with the Windows Registry.
+
+## Testing Strategy
+
+Tests in this project are primarily unit tests co-located with the code in `src/` modules. They are executed using `cargo test`.
